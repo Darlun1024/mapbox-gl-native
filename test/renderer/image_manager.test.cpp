@@ -134,14 +134,15 @@ TEST(ImageManager, NotifiesRequestorWhenSpriteIsLoaded) {
 TEST(ImageManager, NotifiesRequestorImmediatelyIfDependenciesAreSatisfied) {
     ImageManager imageManager;
     StubImageRequestor requestor;
-    bool notified = false;
+    uint64_t imagesAvailableCount = 0;
 
     requestor.imagesAvailable = [&] (ImageMap) {
-        notified = true;
+        ++imagesAvailableCount;
     };
 
+    imageManager.setLoaded(true);
     imageManager.addImage(makeMutable<style::Image::Impl>("one", PremultipliedImage({ 16, 16 }), 2));
     imageManager.getImages(requestor, {"one"});
 
-    ASSERT_TRUE(notified);
+    ASSERT_EQ(imagesAvailableCount, 1u);
 }

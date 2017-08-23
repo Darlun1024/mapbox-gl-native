@@ -58,14 +58,12 @@ void ImageManager::getImages(ImageRequestor& requestor, ImageDependencies depend
     // Otherwise, delay notification until the sprite is loaded. At that point, if any of the
     // dependencies are still unavailable, we'll just assume they are permanently missing.
     bool hasAllDependencies = true;
-    if (!isLoaded()) {
-        for (const auto& dependency : dependencies) {
-            if (images.find(dependency) == images.end()) {
-                hasAllDependencies = false;
-            }
+    for (const auto& dependency : dependencies) {
+        if (images.find(dependency) == images.end()) {
+            hasAllDependencies = false;
         }
     }
-    if (isLoaded() || hasAllDependencies) {
+    if (isLoaded() && hasAllDependencies) {
         notify(requestor, dependencies);
     } else {
         requestors.emplace(&requestor, std::move(dependencies));
