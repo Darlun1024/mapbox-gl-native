@@ -144,6 +144,7 @@ private:
     
     util::Throttler placementThrottler;
     float lastYStretch;
+    const MapMode mode;
 
 public:
     optional<gl::Texture> glyphAtlasTexture;
