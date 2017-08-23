@@ -41,7 +41,7 @@ public:
     void setLayers(const std::vector<Immutable<style::Layer::Impl>>&) override;
     
     void onGlyphsAvailable(GlyphMap) override;
-    void onImagesAvailable(ImageMap) override;
+    void onImagesAvailable(ImageMap, uint64_t correlationID) override;
     
     void getGlyphs(GlyphDependencies);
     void getImages(ImageDependencies);
@@ -129,6 +129,7 @@ private:
     ImageManager& imageManager;
 
     uint64_t correlationID = 0;
+    uint64_t imageCorrelationID = 0;
     optional<PlacementConfig> requestedConfig;
 
     std::unordered_map<std::string, std::shared_ptr<Bucket>> nonSymbolBuckets;

@@ -108,10 +108,11 @@ TEST(ImageManager, RemoveReleasesBinPackRect) {
 
 class StubImageRequestor : public ImageRequestor {
 public:
-    void onImagesAvailable(ImageMap images) final {
-        if (imagesAvailable) imagesAvailable(images);
+    void onImagesAvailable(ImageMap images, uint64_t correlationID_) final {
+        if (imagesAvailable && correlationID == correlationID_) imagesAvailable(images);
     }
 
+    uint64_t correlationID = 0;
     std::function<void (ImageMap)> imagesAvailable;
 };
 
@@ -120,11 +121,12 @@ TEST(ImageManager, NotifiesRequestorWhenSpriteIsLoaded) {
     StubImageRequestor requestor;
     bool notified = false;
 
+
     requestor.imagesAvailable = [&] (ImageMap) {
         notified = true;
     };
 
-    imageManager.getImages(requestor, {"one"});
+    imageManager.getImages(requestor, {"one"}, 0);
     ASSERT_FALSE(notified);
 
     imageManager.setLoaded(true);
@@ -142,7 +144,7 @@ TEST(ImageManager, NotifiesRequestorImmediatelyIfDependenciesAreSatisfied) {
 
     imageManager.setLoaded(true);
     imageManager.addImage(makeMutable<style::Image::Impl>("one", PremultipliedImage({ 16, 16 }), 2));
-    imageManager.getImages(requestor, {"one"});
+    imageManager.getImages(requestor, {"one"}, 0);
 
     ASSERT_EQ(imagesAvailableCount, 1u);
 }

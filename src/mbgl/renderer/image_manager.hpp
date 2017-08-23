@@ -21,7 +21,7 @@ class Context;
 class ImageRequestor {
 public:
     virtual ~ImageRequestor() = default;
-    virtual void onImagesAvailable(ImageMap) = 0;
+    virtual void onImagesAvailable(ImageMap, uint64_t correlationID) = 0;
 };
 
 /*
@@ -50,15 +50,15 @@ public:
     void updateImage(Immutable<style::Image::Impl>);
     void removeImage(const std::string&);
 
-    void getImages(ImageRequestor&, ImageDependencies);
+    void getImages(ImageRequestor&, ImageDependencies, uint64_t correlationID);
     void removeRequestor(ImageRequestor&);
 
 private:
-    void notify(ImageRequestor&, const ImageDependencies&) const;
+    void notify(ImageRequestor&, const ImageDependencies&, uint64_t correlationID) const;
 
     bool loaded = false;
 
-    std::unordered_map<ImageRequestor*, ImageDependencies> requestors;
+    std::unordered_map<ImageRequestor*, std::pair<ImageDependencies, uint64_t>> requestors;
     ImageMap images;
 
 // Pattern stuff

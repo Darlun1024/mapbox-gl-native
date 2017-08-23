@@ -165,12 +165,14 @@ void GeometryTile::getGlyphs(GlyphDependencies glyphDependencies) {
     glyphManager.getGlyphs(*this, std::move(glyphDependencies));
 }
 
-void GeometryTile::onImagesAvailable(ImageMap images) {
-    worker.invoke(&GeometryTileWorker::onImagesAvailable, std::move(images));
+void GeometryTile::onImagesAvailable(ImageMap images, uint64_t correlationID_) {
+    if (imageCorrelationID == correlationID_) {
+        worker.invoke(&GeometryTileWorker::onImagesAvailable, std::move(images));
+    }
 }
 
 void GeometryTile::getImages(ImageDependencies imageDependencies) {
-    imageManager.getImages(*this, std::move(imageDependencies));
+    imageManager.getImages(*this, std::move(imageDependencies), ++imageCorrelationID);
 }
 
 void GeometryTile::upload(gl::Context& context) {

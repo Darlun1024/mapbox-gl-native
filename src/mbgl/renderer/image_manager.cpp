@@ -13,7 +13,7 @@ void ImageManager::setLoaded(bool loaded_) {
 
     if (loaded) {
         for (const auto& entry : requestors) {
-            notify(*entry.first, entry.second);
+            notify(*entry.first, entry.second.first, entry.second.second);
         }
         requestors.clear();
     }
@@ -52,7 +52,7 @@ const style::Image::Impl* ImageManager::getImage(const std::string& id) const {
     return nullptr;
 }
 
-void ImageManager::getImages(ImageRequestor& requestor, ImageDependencies dependencies) {
+void ImageManager::getImages(ImageRequestor& requestor, ImageDependencies dependencies, uint64_t correlationID) {
     // If the sprite has been loaded, or if all the icon dependencies are already present
     // (i.e. if they've been addeded via runtime styling), then notify the requestor immediately.
     // Otherwise, delay notification until the sprite is loaded. At that point, if any of the
@@ -64,9 +64,9 @@ void ImageManager::getImages(ImageRequestor& requestor, ImageDependencies depend
         }
     }
     if (isLoaded() && hasAllDependencies) {
-        notify(requestor, dependencies);
+        notify(requestor, dependencies, correlationID);
     } else {
-        requestors.emplace(&requestor, std::move(dependencies));
+        requestors.emplace(&requestor, std::make_pair(std::move(dependencies), correlationID));
     }
 }
 
@@ -74,7 +74,7 @@ void ImageManager::removeRequestor(ImageRequestor& requestor) {
     requestors.erase(&requestor);
 }
 
-void ImageManager::notify(ImageRequestor& requestor, const ImageDependencies& dependencies) const {
+void ImageManager::notify(ImageRequestor& requestor, const ImageDependencies& dependencies, uint64_t correlationID) const {
     ImageMap response;
 
     for (const auto& dependency : dependencies) {
@@ -84,7 +84,7 @@ void ImageManager::notify(ImageRequestor& requestor, const ImageDependencies& de
         }
     }
 
-    requestor.onImagesAvailable(response);
+    requestor.onImagesAvailable(response, correlationID);
 }
 
 void ImageManager::dumpDebugLogs() const {
