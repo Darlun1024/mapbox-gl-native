@@ -9,7 +9,6 @@ import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
-import android.view.Surface;
 
 import com.mapbox.mapboxsdk.LibraryLoader;
 import com.mapbox.mapboxsdk.annotations.Icon;
@@ -20,6 +19,7 @@ import com.mapbox.mapboxsdk.camera.CameraPosition;
 import com.mapbox.mapboxsdk.geometry.LatLng;
 import com.mapbox.mapboxsdk.geometry.LatLngBounds;
 import com.mapbox.mapboxsdk.geometry.ProjectedMeters;
+import com.mapbox.mapboxsdk.maps.renderer.MapRenderer;
 import com.mapbox.mapboxsdk.storage.FileSource;
 import com.mapbox.mapboxsdk.style.layers.CannotAddLayerException;
 import com.mapbox.mapboxsdk.style.layers.Filter;
@@ -29,6 +29,7 @@ import com.mapbox.mapboxsdk.style.sources.CannotAddSourceException;
 import com.mapbox.mapboxsdk.style.sources.Source;
 import com.mapbox.mapboxsdk.utils.BitmapUtils;
 import com.mapbox.services.commons.geojson.Feature;
+import com.mapbox.services.commons.geojson.Geometry;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -52,6 +53,9 @@ final class NativeMapView {
   //Hold a reference to prevent it from being GC'd as long as it's used on the native side
   private final FileSource fileSource;
 
+  // Used to schedule work on the MapRenderer Thread
+  private MapRenderer mapRenderer;
+
   // Device density
   private final float pixelRatio;
 
@@ -66,15 +70,15 @@ final class NativeMapView {
   // Constructors
   //
 
-  public NativeMapView(MapView mapView) {
-    Context context = mapView.getContext();
-    fileSource = FileSource.getInstance(context);
-
-    pixelRatio = context.getResources().getDisplayMetrics().density;
+  public NativeMapView(final MapView mapView, MapRenderer mapRenderer) {
+    this.mapRenderer = mapRenderer;
     this.mapView = mapView;
 
-    String programCacheDir = context.getCacheDir().getAbsolutePath();
-    nativeInitialize(this, fileSource, pixelRatio, programCacheDir);
+    Context context = mapView.getContext();
+    fileSource = FileSource.getInstance(context);
+    pixelRatio = context.getResources().getDisplayMetrics().density;
+
+    nativeInitialize(this, fileSource, mapRenderer, pixelRatio);
   }
 
   //
@@ -97,32 +101,12 @@ final class NativeMapView {
     destroyed = true;
   }
 
-  public void createSurface(Surface surface) {
-    if (isDestroyedOn("createSurface")) {
-      return;
-    }
-    nativeCreateSurface(surface);
-  }
-
-  public void destroySurface() {
-    if (isDestroyedOn("destroySurface")) {
-      return;
-    }
-    nativeDestroySurface();
-  }
-
   public void update() {
     if (isDestroyedOn("update")) {
       return;
     }
-    nativeUpdate();
-  }
 
-  public void render() {
-    if (isDestroyedOn("render")) {
-      return;
-    }
-    nativeRender();
+    mapRenderer.requestRender();
   }
 
   public void resizeView(int width, int height) {
@@ -153,31 +137,8 @@ final class NativeMapView {
         + "capping value at 65535 instead of %s", height);
       height = 65535;
     }
+
     nativeResizeView(width, height);
-  }
-
-  public void resizeFramebuffer(int fbWidth, int fbHeight) {
-    if (isDestroyedOn("resizeFramebuffer")) {
-      return;
-    }
-    if (fbWidth < 0) {
-      throw new IllegalArgumentException("fbWidth cannot be negative.");
-    }
-
-    if (fbHeight < 0) {
-      throw new IllegalArgumentException("fbHeight cannot be negative.");
-    }
-
-    if (fbWidth > 65535) {
-      throw new IllegalArgumentException(
-        "fbWidth cannot be greater than 65535.");
-    }
-
-    if (fbHeight > 65535) {
-      throw new IllegalArgumentException(
-        "fbHeight cannot be greater than 65535.");
-    }
-    nativeResizeFramebuffer(fbWidth, fbHeight);
   }
 
   public void setStyleUrl(String url) {
@@ -270,6 +231,13 @@ final class NativeMapView {
       return null;
     }
     return nativeGetCameraForLatLngBounds(latLngBounds);
+  }
+
+  public CameraPosition getCameraForGeometry(Geometry geometry, double bearing) {
+    if (isDestroyedOn("getCameraForGeometry")) {
+      return null;
+    }
+    return nativeGetCameraForGeometry(geometry, bearing);
   }
 
   public void resetPosition() {
@@ -547,13 +515,6 @@ final class NativeMapView {
       return false;
     }
     return nativeGetDebug();
-  }
-
-  public void setEnableFps(boolean enable) {
-    if (isDestroyedOn("setEnableFps")) {
-      return;
-    }
-    nativeSetEnableFps(enable);
   }
 
   public boolean isFullyLoaded() {
@@ -846,13 +807,6 @@ final class NativeMapView {
     return features != null ? Arrays.asList(features) : new ArrayList<Feature>();
   }
 
-  public void scheduleTakeSnapshot() {
-    if (isDestroyedOn("scheduleTakeSnapshot")) {
-      return;
-    }
-    nativeTakeSnapshot();
-  }
-
   public void setApiBaseUrl(String baseUrl) {
     if (isDestroyedOn("setApiBaseUrl")) {
       return;
@@ -875,23 +829,10 @@ final class NativeMapView {
   // Callbacks
   //
 
-  protected void onInvalidate() {
-    if (mapView != null) {
-      mapView.onInvalidate();
-    }
-  }
-
   protected void onMapChanged(int rawChange) {
     if (mapView != null) {
       mapView.onMapChange(rawChange);
     }
-  }
-
-  protected void onFpsChanged(double fps) {
-    if (isDestroyedOn("OnFpsChanged")) {
-      return;
-    }
-    mapView.onFpsChanged(fps);
   }
 
   protected void onSnapshotReady(Bitmap mapContent) {
@@ -911,30 +852,12 @@ final class NativeMapView {
 
   private native void nativeInitialize(NativeMapView nativeMapView,
                                        FileSource fileSource,
-                                       float pixelRatio,
-                                       String programCacheDir);
+                                       MapRenderer mapRenderer,
+                                       float pixelRatio);
 
   private native void nativeDestroy();
 
-  private native void nativeInitializeDisplay();
-
-  private native void nativeTerminateDisplay();
-
-  private native void nativeInitializeContext();
-
-  private native void nativeTerminateContext();
-
-  private native void nativeCreateSurface(Object surface);
-
-  private native void nativeDestroySurface();
-
-  private native void nativeUpdate();
-
-  private native void nativeRender();
-
   private native void nativeResizeView(int width, int height);
-
-  private native void nativeResizeFramebuffer(int fbWidth, int fbHeight);
 
   private native void nativeSetStyleUrl(String url);
 
@@ -957,6 +880,8 @@ final class NativeMapView {
   private native LatLng nativeGetLatLng();
 
   private native CameraPosition nativeGetCameraForLatLngBounds(LatLngBounds latLngBounds);
+
+  private native CameraPosition nativeGetCameraForGeometry(Geometry geometry, double bearing);
 
   private native void nativeResetPosition();
 
@@ -1016,8 +941,6 @@ final class NativeMapView {
   private native void nativeCycleDebugOptions();
 
   private native boolean nativeGetDebug();
-
-  private native void nativeSetEnableFps(boolean enable);
 
   private native boolean nativeIsFullyLoaded();
 
@@ -1139,8 +1062,35 @@ final class NativeMapView {
   //
 
   void addSnapshotCallback(@NonNull MapboxMap.SnapshotReadyCallback callback) {
+    if (isDestroyedOn("addSnapshotCallback")) {
+      return;
+    }
     snapshotReadyCallback = callback;
-    scheduleTakeSnapshot();
-    render();
+    nativeTakeSnapshot();
+  }
+
+  public void setOnFpsChangedListener(final MapboxMap.OnFpsChangedListener listener) {
+    mapRenderer.queueEvent(new Runnable() {
+
+      @Override
+      public void run() {
+        mapRenderer.setOnFpsChangedListener(new MapboxMap.OnFpsChangedListener() {
+
+          @Override
+          public void onFpsChanged(final double fps) {
+            mapView.post(new Runnable() {
+
+              @Override
+              public void run() {
+                listener.onFpsChanged(fps);
+              }
+
+            });
+          }
+
+        });
+      }
+
+    });
   }
 }
